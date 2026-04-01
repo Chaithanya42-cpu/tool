@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Intelligence Dashboard - Local Edition</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syne:wght@700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Recharts -->
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+    
+    <!-- Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+
+    <!-- XLSX for Excel/CSV parsing -->
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --card-bg: #0f0f0f;
+            --accent: #f27d26;
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --border: #27272a;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .syne { font-family: 'Syne', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        .glass {
+            background: rgba(15, 15, 15, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+        }
+
+        .accent-glow {
+            box-shadow: 0 0 20px rgba(242, 125, 38, 0.15);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+        const { 
+            LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+            BarChart, Bar, Cell, PieChart, Pie 
+        } = Recharts;
+        const { motion, AnimatePresence } = window.Motion || { motion: ({children}) => <div>{children}</div>, AnimatePresence: ({children}) => <>{children}</> };
+
+        // --- Mock Data ---
+        const MOCK_STATS = [
+            { label: 'Total Revenue', value: '$1.2M', change: '+12.5%', icon: 'DollarSign' },
+            { label: 'Active Users', value: '45.2K', change: '+8.2%', icon: 'Users' },
+            { label: 'Conv. Rate', value: '3.8%', change: '-0.4%', icon: 'TrendingUp' },
+            { label: 'Avg. Order', value: '$84.20', change: '+2.1%', icon: 'ShoppingBag' },
+        ];
+
+        const REVENUE_DATA = [
+            { name: 'Jan', value: 4000, intent: 2400 },
+            { name: 'Feb', value: 3000, intent: 1398 },
+            { name: 'Mar', value: 2000, intent: 9800 },
+            { name: 'Apr', value: 2780, intent: 3908 },
+            { name: 'May', value: 1890, intent: 4800 },
+            { name: 'Jun', value: 2390, intent: 3800 },
+            { name: 'Jul', value: 3490, intent: 4300 },
+        ];
+
+        const CAMPAIGNS_DATA = [
+            { id: 1, name: 'Summer Sale 2024', status: 'Active', spend: '$12,400', roas: '4.2x', clicks: '45k', conv: '3.2%' },
+            { id: 2, name: 'Welcome Flow A/B', status: 'Active', spend: '$2,100', roas: '8.5x', clicks: '12k', conv: '12.1%' },
+            { id: 3, name: 'Winback Q1', status: 'Paused', spend: '$5,000', roas: '2.1x', clicks: '8k', conv: '1.5%' },
+            { id: 4, name: 'New Product Launch', status: 'Active', spend: '$45,000', roas: '3.8x', clicks: '120k', conv: '2.8%' },
+            { id: 5, name: 'Abandoned Cart', status: 'Active', spend: '$800', roas: '12.4x', clicks: '5k', conv: '18.5%' },
+        ];
+
+        const FLOWS_DATA = [
+            { id: 1, name: 'Post-Purchase Upsell', trigger: 'Order Placed', openRate: '65%', clickRate: '12%', revenue: '$45,200' },
+            { id: 2, name: 'Browse Abandonment', trigger: 'Product Viewed', openRate: '42%', clickRate: '8%', revenue: '$12,800' },
+            { id: 3, name: 'Newsletter Signup', trigger: 'Form Submit', openRate: '58%', clickRate: '15%', revenue: '$8,400' },
+        ];
+
+        const CREATIVES = [
+            { id: 1, title: 'Summer Hero V1', type: 'Image', performance: 'High', tags: ['Summer', 'Sale'] },
+            { id: 2, title: 'Product Showcase Video', type: 'Video', performance: 'Medium', tags: ['Product', 'Social'] },
+            { id: 3, title: 'UGC Testimonial', type: 'Video', performance: 'High', tags: ['Social', 'Trust'] },
+            { id: 4, title: 'Minimalist Banner', type: 'Image', performance: 'Low', tags: ['Clean', 'Brand'] },
+        ];
+
+        // --- Components ---
+
+        const Icon = ({ name, className = "w-5 h-5" }) => {
+            const [iconLoaded, setIconLoaded] = useState(false);
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                    setIconLoaded(true);
+                }
+            }, [name]);
+
+            return <i data-lucide={name.toLowerCase().replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()} className={className}></i>;
+        };
+
+        const SidebarItem = ({ icon, label, active, onClick }) => (
+            <button 
+                onClick={onClick}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                    active ? 'bg-[#f27d26] text-white shadow-lg shadow-[#f27d26]/20' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+                }`}
+            >
+                <Icon name={icon} />
+                <span className="font-medium">{label}</span>
+            </button>
+        );
+
+        const StatCard = ({ label, value, change, icon }) => (
+            <div className="glass p-6 rounded-2xl animate-fade-in">
+                <div className="flex justify-between items-start mb-4">
+                    <div className="p-2 bg-zinc-900 rounded-lg">
+                        <Icon name={icon} className="w-6 h-6 text-[#f27d26]" />
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${change.startsWith('+') ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                        {change}
+                    </span>
+                </div>
+                <h3 className="text-zinc-400 text-sm font-medium mb-1">{label}</h3>
+                <p className="text-2xl font-bold syne">{value}</p>
+            </div>
+        );
+
+        const Overview = () => (
+            <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {MOCK_STATS.map((stat, i) => <StatCard key={i} {...stat} />)}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="glass p-6 rounded-2xl">
+                        <h3 className="text-lg font-bold mb-6 syne">Revenue vs Intent</h3>
+                        <div className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={REVENUE_DATA}>
+                                    <defs>
+                                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#f27d26" stopOpacity={0.3}/>
+                                            <stop offset="95%" stopColor="#f27d26" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} />
+                                    <Tooltip 
+                                        contentStyle={{ backgroundColor: '#0f0f0f', border: '1px solid #27272a', borderRadius: '12px' }}
+                                        itemStyle={{ color: '#fff' }}
+                                    />
+                                    <Area type="monotone" dataKey="value" stroke="#f27d26" fillOpacity={1} fill="url(#colorValue)" strokeWidth={3} />
+                                    <Area type="monotone" dataKey="intent" stroke="#a1a1aa" fill="transparent" strokeWidth={2} strokeDasharray="5 5" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    <div className="glass p-6 rounded-2xl">
+                        <h3 className="text-lg font-bold mb-6 syne">Conversion Funnel</h3>
+                        <div className="space-y-6">
+                            {[
+                                { label: 'Awareness', value: '120k', percent: 100 },
+                                { label: 'Interest', value: '45k', percent: 37.5 },
+                                { label: 'Consideration', value: '12k', percent: 10 },
+                                { label: 'Conversion', value: '3.2k', percent: 2.6 },
+                            ].map((item, i) => (
+                                <div key={i} className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-zinc-400">{item.label}</span>
+                                        <span className="font-bold">{item.value}</span>
+                                    </div>
+                                    <div className="h-2 bg-zinc-900 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-[#f27d26] rounded-full" 
+                                            style={{ width: `${item.percent}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const Campaigns = () => {
+            const [search, setSearch] = useState('');
+            const filtered = CAMPAIGNS_DATA.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+
+            return (
+                <div className="glass rounded-2xl overflow-hidden">
+                    <div className="p-6 border-b border-zinc-800 flex flex-col md:flex-row justify-between gap-4">
+                        <h3 className="text-xl font-bold syne">Campaign Performance</h3>
+                        <div className="relative">
+                            <Icon name="Search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                            <input 
+                                type="text" 
+                                placeholder="Search campaigns..."
+                                className="bg-zinc-900 border border-zinc-800 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-[#f27d26] transition-colors w-full md:w-64"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-zinc-500 text-xs uppercase tracking-wider border-b border-zinc-800">
+                                    <th className="px-6 py-4 font-bold">Campaign Name</th>
+                                    <th className="px-6 py-4 font-bold">Status</th>
+                                    <th className="px-6 py-4 font-bold">Spend</th>
+                                    <th className="px-6 py-4 font-bold">ROAS</th>
+                                    <th className="px-6 py-4 font-bold">Clicks</th>
+                                    <th className="px-6 py-4 font-bold">Conv.</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800">
+                                {filtered.map((campaign) => (
+                                    <tr key={campaign.id} className="hover:bg-zinc-900/50 transition-colors">
+                                        <td className="px-6 py-4 font-medium">{campaign.name}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                                campaign.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-zinc-500'
+                                            }`}>
+                                                {campaign.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 mono text-sm">{campaign.spend}</td>
+                                        <td className="px-6 py-4 font-bold text-[#f27d26]">{campaign.roas}</td>
+                                        <td className="px-6 py-4 text-zinc-400">{campaign.clicks}</td>
+                                        <td className="px-6 py-4 text-zinc-400">{campaign.conv}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const Flows = () => (
+            <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-2xl font-bold syne">Automated Flows</h3>
+                    <button className="bg-[#f27d26] text-white px-4 py-2 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
+                        Create New Flow
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {FLOWS_DATA.map((flow) => (
+                        <div key={flow.id} className="glass p-6 rounded-2xl space-y-4 hover:border-[#f27d26]/50 transition-all cursor-pointer group">
+                            <div className="flex justify-between items-start">
+                                <div className="p-2 bg-zinc-900 rounded-lg group-hover:bg-[#f27d26]/10 transition-colors">
+                                    <Icon name="Zap" className="w-5 h-5 text-[#f27d26]" />
+                                </div>
+                                <Icon name="MoreVertical" className="text-zinc-600" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-lg mb-1">{flow.name}</h4>
+                                <p className="text-zinc-500 text-xs">Trigger: {flow.trigger}</p>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 pt-4 border-t border-zinc-800">
+                                <div>
+                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Open</p>
+                                    <p className="font-bold">{flow.openRate}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Click</p>
+                                    <p className="font-bold">{flow.clickRate}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Revenue</p>
+                                    <p className="font-bold text-emerald-500">{flow.revenue}</p>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        const CreativeLibrary = () => (
+            <div className="space-y-8">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-2xl font-bold syne">Creative Assets</h3>
+                    <div className="flex gap-3">
+                        <button className="glass px-4 py-2 rounded-xl text-sm font-medium hover:bg-zinc-900">Filter</button>
+                        <button className="bg-[#f27d26] text-white px-4 py-2 rounded-xl font-bold text-sm">Upload Asset</button>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {CREATIVES.map((item) => (
+                        <div key={item.id} className="glass rounded-2xl overflow-hidden group">
+                            <div className="aspect-square bg-zinc-900 relative flex items-center justify-center">
+                                <Icon name={item.type === 'Video' ? 'PlayCircle' : 'Image'} className="w-12 h-12 text-zinc-700 group-hover:text-[#f27d26] transition-colors" />
+                                <div className="absolute top-3 right-3">
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                                        item.performance === 'High' ? 'bg-emerald-500/20 text-emerald-500' : 
+                                        item.performance === 'Medium' ? 'bg-amber-500/20 text-amber-500' : 'bg-rose-500/20 text-rose-500'
+                                    }`}>
+                                        {item.performance} Performance
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="p-4 space-y-3">
+                                <h4 className="font-bold">{item.title}</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {item.tags.map((tag, i) => (
+                                        <span key={i} className="text-[10px] bg-zinc-900 text-zinc-400 px-2 py-1 rounded-md">#{tag}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        const DataUpload = () => {
+            const [isDragging, setIsDragging] = useState(false);
+            const [uploadType, setUploadType] = useState('campaigns');
+            const [files, setFiles] = useState([]);
+            const [parsedData, setParsedData] = useState(null);
+
+            const handleFile = (file) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                    setParsedData(jsonData);
+                    setFiles([file]);
+                };
+                reader.readAsArrayBuffer(file);
+            };
+
+            const onDrop = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const file = e.dataTransfer.files[0];
+                if (file) handleFile(file);
+            };
+
+            const sampleFormats = {
+                campaigns: 'Campaign Name, Spend, ROAS, Clicks, Conversions, Status',
+                journies: 'Journey Name, Trigger, Open Rate, Click Rate, Revenue, Active',
+                segments: 'Segment Name, Size, Growth, Avg LTV, Churn Rate',
+                metrics: 'Date, Revenue, New Users, Repeat Orders, CAC'
+            };
+
+            const downloadSample = () => {
+                const headers = sampleFormats[uploadType].split(', ');
+                const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + 
+                                 headers.map(() => "Sample Data").join(",");
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `sample_${uploadType}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+                    <div className="text-center space-y-4">
+                        <h3 className="text-3xl font-bold syne">Data Intelligence Upload</h3>
+                        <p className="text-zinc-500">Upload your marketing data to generate advanced insights and copy logic.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {Object.keys(sampleFormats).map((type) => (
+                            <button 
+                                key={type}
+                                onClick={() => setUploadType(type)}
+                                className={`p-4 rounded-2xl border transition-all ${
+                                    uploadType === type ? 'bg-[#f27d26]/10 border-[#f27d26] text-[#f27d26]' : 'glass border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                                }`}
+                            >
+                                <span className="text-xs font-bold uppercase block mb-1">{type}</span>
+                                <Icon name={type === 'campaigns' ? 'Target' : type === 'journies' ? 'GitBranch' : type === 'segments' ? 'Users' : 'BarChart2'} className="mx-auto" />
+                            </button>
+                        ))}
+                    </div>
+
+                    <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={onDrop}
+                        className={`glass border-2 border-dashed rounded-3xl p-12 text-center transition-all ${
+                            isDragging ? 'border-[#f27d26] bg-[#f27d26]/5' : 'border-zinc-800'
+                        }`}
+                    >
+                        <div className="max-w-xs mx-auto space-y-6">
+                            <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mx-auto">
+                                <Icon name="UploadCloud" className="w-10 h-10 text-[#f27d26]" />
+                            </div>
+                            <div className="space-y-2">
+                                <h4 className="text-xl font-bold">Drop your file here</h4>
+                                <p className="text-zinc-500 text-sm">Supports .xlsx, .csv, .json</p>
+                            </div>
+                            <label className="block">
+                                <span className="bg-white text-black px-6 py-3 rounded-xl font-bold cursor-pointer hover:bg-zinc-200 transition-colors inline-block">
+                                    Browse Files
+                                </span>
+                                <input type="file" className="hidden" onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])} />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="glass p-6 rounded-2xl space-y-4">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2 text-[#f27d26]">
+                                <Icon name="Info" className="w-4 h-4" />
+                                <h5 className="font-bold text-sm uppercase">Required Format for {uploadType}</h5>
+                            </div>
+                            <button 
+                                onClick={downloadSample}
+                                className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition-colors"
+                            >
+                                <Icon name="Download" className="w-3 h-3" />
+                                Download Sample CSV
+                            </button>
+                        </div>
+                        <div className="bg-black/50 p-4 rounded-xl border border-zinc-800">
+                            <code className="text-zinc-400 text-sm mono">{sampleFormats[uploadType]}</code>
+                        </div>
+                    </div>
+
+                    {parsedData && (
+                        <div className="glass p-6 rounded-2xl animate-fade-in">
+                            <div className="flex justify-between items-center mb-6">
+                                <h4 className="font-bold text-lg">Preview: {files[0]?.name}</h4>
+                                <span className="text-xs text-zinc-500">{parsedData.length} rows found</span>
+                            </div>
+                            <div className="overflow-x-auto max-h-64">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="sticky top-0 bg-zinc-900">
+                                        <tr>
+                                            {Object.keys(parsedData[0]).map(key => (
+                                                <th key={key} className="px-4 py-2 border-b border-zinc-800">{key}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-800">
+                                        {parsedData.slice(0, 5).map((row, i) => (
+                                            <tr key={i}>
+                                                {Object.values(row).map((val, j) => (
+                                                    <td key={j} className="px-4 py-2 text-zinc-400">{String(val)}</td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button className="w-full mt-6 bg-[#f27d26] text-white py-4 rounded-xl font-bold hover:opacity-90 transition-opacity">
+                                Process & Sync Data
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Main App ---
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('overview');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+            return (
+                <div className="flex min-h-screen">
+                    {/* Sidebar */}
+                    <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-72 glass border-r border-zinc-800 transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+                        <div className="p-8 space-y-12">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-[#f27d26] rounded-xl flex items-center justify-center shadow-lg shadow-[#f27d26]/20">
+                                    <Icon name="Activity" className="text-white w-6 h-6" />
+                                </div>
+                                <h1 className="text-2xl font-black syne tracking-tighter">CRM.INT</h1>
+                            </div>
+
+                            <nav className="space-y-2">
+                                <SidebarItem icon="LayoutDashboard" label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} />
+                                <SidebarItem icon="Target" label="Campaigns" active={activeTab === 'campaigns'} onClick={() => setActiveTab('campaigns')} />
+                                <SidebarItem icon="GitBranch" label="Flows" active={activeTab === 'flows'} onClick={() => setActiveTab('flows')} />
+                                <SidebarItem icon="Image" label="Creative Library" active={activeTab === 'creative'} onClick={() => setActiveTab('creative')} />
+                                <SidebarItem icon="UploadCloud" label="Data Upload" active={activeTab === 'upload'} onClick={() => setActiveTab('upload')} />
+                                <SidebarItem icon="Settings" label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+                            </nav>
+
+                            <div className="pt-12">
+                                <div className="glass p-4 rounded-2xl space-y-3">
+                                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Storage Used</p>
+                                    <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                                        <div className="h-full bg-[#f27d26] w-3/4" />
+                                    </div>
+                                    <p className="text-[10px] text-zinc-400">75% of 500MB local storage</p>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Main Content */}
+                    <main className="flex-1 min-w-0 overflow-y-auto">
+                        <header className="sticky top-0 z-40 glass border-b border-zinc-800 px-8 py-4 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden p-2 hover:bg-zinc-900 rounded-lg">
+                                    <Icon name="Menu" />
+                                </button>
+                                <h2 className="text-xl font-bold syne capitalize">{activeTab.replace('-', ' ')}</h2>
+                            </div>
+                            <div className="flex items-center gap-6">
+                                <div className="hidden md:flex items-center gap-2 text-zinc-400 text-sm">
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                    System Online
+                                </div>
+                                <div className="flex items-center gap-3 pl-6 border-l border-zinc-800">
+                                    <div className="text-right hidden sm:block">
+                                        <p className="text-sm font-bold">Chai M.</p>
+                                        <p className="text-[10px] text-zinc-500">Admin Account</p>
+                                    </div>
+                                    <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center font-bold text-[#f27d26]">
+                                        CM
+                                    </div>
+                                </div>
+                            </div>
+                        </header>
+
+                        <div className="p-8 max-w-7xl mx-auto">
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={activeTab}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    {activeTab === 'overview' && <Overview />}
+                                    {activeTab === 'campaigns' && <Campaigns />}
+                                    {activeTab === 'flows' && <Flows />}
+                                    {activeTab === 'creative' && <CreativeLibrary />}
+                                    {activeTab === 'upload' && <DataUpload />}
+                                    {activeTab === 'settings' && (
+                                        <div className="glass p-12 rounded-3xl text-center space-y-4">
+                                            <Icon name="Settings" className="w-12 h-12 mx-auto text-zinc-700" />
+                                            <h3 className="text-2xl font-bold syne">Local Settings</h3>
+                                            <p className="text-zinc-500">Configure your local dashboard preferences and data retention policies.</p>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        // --- Render ---
+        const rootElement = document.getElementById('root');
+        if (rootElement) {
+            const root = ReactDOM.createRoot(rootElement);
+            root.render(<App />);
+        } else {
+            document.body.innerHTML = '<div style="color: white; padding: 20px;">Error: Root element not found.</div>';
+        }
+
+    </script>
+</body>
+</html>
